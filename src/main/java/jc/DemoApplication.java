@@ -2,6 +2,7 @@ package jc;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.kafka.common.serialization.StringSerializer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -18,11 +19,13 @@ import org.springframework.integration.dsl.IntegrationFlows;
 import org.springframework.integration.dsl.SourcePollingChannelAdapterSpec;
 import org.springframework.integration.dsl.kafka.Kafka;
 import org.springframework.integration.dsl.kafka.KafkaHighLevelConsumerMessageSourceSpec;
-import org.springframework.integration.dsl.kafka.KafkaProducerMessageHandlerSpec;
 import org.springframework.integration.dsl.support.Consumer;
+import org.springframework.integration.kafka.outbound.KafkaProducerMessageHandler;
+import org.springframework.integration.kafka.support.KafkaHeaders;
+import org.springframework.integration.kafka.support.ProducerMetadata;
 import org.springframework.integration.kafka.support.ZookeeperConnect;
 import org.springframework.messaging.MessageChannel;
-import org.springframework.messaging.support.GenericMessage;
+import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -94,7 +97,8 @@ public class DemoApplication {
         CommandLineRunner kickOff(@Qualifier(OUTBOUND_ID + ".input") MessageChannel in) {
             return args -> {
                 for (int i = 0; i < 1000; i++) {
-                    in.send(new GenericMessage<>("#" + i));
+                    //in.send(new GenericMessage<>("#" + i));
+                    in.send(MessageBuilder.withPayload("#" + i).setHeader(KafkaHeaders.TOPIC, this.kafkaConfig.getTopic()).build());
                     log.info("sending message #" + i);
                 }
             };
@@ -107,19 +111,18 @@ public class DemoApplication {
             log.info("starting producer flow..");
 
             return flowDefinition -> {
-                Consumer<KafkaProducerMessageHandlerSpec.ProducerMetadataSpec> producerMetadataSpecConsumer =
-                        (KafkaProducerMessageHandlerSpec.ProducerMetadataSpec metadata) ->
-                                metadata.async(true)
-                                        .batchNumMessages(10)
-                                        .valueClassType(String.class)
-                                        .<String>valueEncoder(String::getBytes);
+                ProducerMetadata<String, String> getProducerMetadata = new ProducerMetadata<>(this.kafkaConfig.getTopic(),
+                            String.class, String.class, new StringSerializer(), new StringSerializer());
 
-                KafkaProducerMessageHandlerSpec messageHandlerSpec =
-                        Kafka.outboundChannelAdapter(props -> props.put("queue.buffering.max.ms", "15000"))
-                                .messageKey(m -> m.getHeaders().get(IntegrationMessageHeaderAccessor.SEQUENCE_NUMBER))
-                                .addProducer(this.kafkaConfig.getTopic(), this.kafkaConfig.getBrokerAddress(), producerMetadataSpecConsumer);
+
+                KafkaProducerMessageHandler kafkaProducerMessageHandler = Kafka.outboundChannelAdapter(props ->
+                        props.put("timeout.ms", "35000"))
+                        .messageKey(m -> m.getHeaders().get(IntegrationMessageHeaderAccessor.SEQUENCE_NUMBER))
+                        .addProducer(getProducerMetadata, this.kafkaConfig.getBrokerAddress())
+                        .get();
+
                 flowDefinition
-                        .handle(messageHandlerSpec);
+                        .handle(kafkaProducerMessageHandler);
             };
         }
     }
