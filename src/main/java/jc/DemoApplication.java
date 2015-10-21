@@ -19,8 +19,8 @@ import org.springframework.integration.dsl.IntegrationFlows;
 import org.springframework.integration.dsl.SourcePollingChannelAdapterSpec;
 import org.springframework.integration.dsl.kafka.Kafka;
 import org.springframework.integration.dsl.kafka.KafkaHighLevelConsumerMessageSourceSpec;
+import org.springframework.integration.dsl.kafka.KafkaProducerMessageHandlerSpec;
 import org.springframework.integration.dsl.support.Consumer;
-import org.springframework.integration.kafka.outbound.KafkaProducerMessageHandler;
 import org.springframework.integration.kafka.support.KafkaHeaders;
 import org.springframework.integration.kafka.support.ProducerMetadata;
 import org.springframework.integration.kafka.support.ZookeeperConnect;
@@ -115,14 +115,13 @@ public class DemoApplication {
                             String.class, String.class, new StringSerializer(), new StringSerializer());
 
 
-                KafkaProducerMessageHandler kafkaProducerMessageHandler = Kafka.outboundChannelAdapter(props ->
+                KafkaProducerMessageHandlerSpec kafkaProducerMessageHandlerSpec = Kafka.outboundChannelAdapter(props ->
                         props.put("timeout.ms", "35000"))
                         .messageKey(m -> m.getHeaders().get(IntegrationMessageHeaderAccessor.SEQUENCE_NUMBER))
-                        .addProducer(getProducerMetadata, this.kafkaConfig.getBrokerAddress())
-                        .get();
+                        .addProducer(getProducerMetadata, this.kafkaConfig.getBrokerAddress());
 
                 flowDefinition
-                        .handle(kafkaProducerMessageHandler);
+                        .handle(kafkaProducerMessageHandlerSpec);
             };
         }
     }
